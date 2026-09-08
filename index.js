@@ -946,13 +946,13 @@ async function fetchEventsBoth(options = {}) {
 
 /* ===== Express app ===== */
 const app = express();
-// app.use(
-//   cors({
-//     origin: "*",
-//     methods: ["GET", "POST", "OPTIONS"],
-//     allowedHeaders: ["Content-Type", "X-API-Secret"],
-//   })
-// );
+app.use(
+  cors({
+    origin: "*",
+    methods: ["GET", "POST", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "X-API-Secret"],
+  })
+);
 /* IMPORTANT for POST body */
 app.use(express.json());
 
@@ -2183,7 +2183,8 @@ app.post("/api/leads", async (req, res) => {
               Boat_Show_Stand_Meeting_Time:
                 otherOrgMappedItem.Boat_Show_Stand_Meeting_Time ?? undefined,
               Boat_Show_Stand_Interested_Yacht:
-                otherOrgMappedItem.Boat_Show_Stand_Interested_Yacht || "Not Sure",
+                otherOrgMappedItem.Boat_Show_Stand_Interested_Yacht ||
+                "Not Sure",
               AI_Enriched_Profile_Summary:
                 otherOrgMappedItem.AI_Enriched_Profile_Summary || undefined,
               AI_Lead_Score: otherOrgMappedItem.AI_Lead_Score || undefined,
@@ -3972,7 +3973,8 @@ app.post("/api/enrich", async (req, res) => {
 });
 
 /* ===== Boot ===== */
-const PORT = process.env.X_ZOHO_CATALYST_LISTEN_PORT || process.env.PORT || 5000;
+const PORT =
+  process.env.X_ZOHO_CATALYST_LISTEN_PORT || process.env.PORT || 5000;
 app.listen(PORT, () => {
   // server started (log removed by request)
 });
