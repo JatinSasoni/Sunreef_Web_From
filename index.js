@@ -1663,6 +1663,7 @@ app.post("/api/leads", async (req, res) => {
         leadId: null,
         leadSource: null,
         duplicateLeadInfoEntry: null,
+        existingContactInfoEntry: null,
       };
       try {
         let foundContact = null;
@@ -1679,6 +1680,13 @@ app.post("/api/leads", async (req, res) => {
         }
         if (foundContact) {
           entry.contactId = foundContact.id;
+          entry.existingContactInfoEntry = {
+            email: item.email,
+            existingContactId: foundContact.id,
+            firstName: foundContact.First_Name || foundContact.first_name,
+            lastName: foundContact.Last_Name || foundContact.last_name,
+            foundInOrg: "main",
+          };
         } else {
           try {
             const leadResult = await crmSearchByEmail({
@@ -1801,6 +1809,9 @@ app.post("/api/leads", async (req, res) => {
     const duplicateLeadInfo = preCheck
       .filter((e) => e.duplicateLeadInfoEntry)
       .map((e) => e.duplicateLeadInfoEntry);
+    const existingContactInfo = preCheck
+      .filter((e) => e.existingContactInfoEntry)
+      .map((e) => e.existingContactInfoEntry);
     const newLeadInfo = [];
     for (let j = 0; j < created.length; j++) {
       const id = created[j].id;
@@ -2405,6 +2416,7 @@ app.post("/api/leads", async (req, res) => {
         meetings: meetingResults,
         duplicateLeadInfo: duplicateLeadInfo,
         newLeadInfo: newLeadInfo,
+        existingContactInfo: existingContactInfo,
         otherOrgResults: otherOrgResults,
       });
     }
@@ -2418,6 +2430,7 @@ app.post("/api/leads", async (req, res) => {
       meetings: meetingResults,
       duplicateLeadInfo: duplicateLeadInfo,
       newLeadInfo: newLeadInfo,
+      existingContactInfo: existingContactInfo,
       otherOrgResults: otherOrgResults,
     });
   } catch (error) {
@@ -2809,7 +2822,8 @@ function combineDateAndTime(dateStr, timeStr) {
 function mapToCreatorRecord(
   input = {},
   duplicateLeadInfo = [],
-  newLeadInfo = []
+  newLeadInfo = [],
+  existingContactInfo = []
 ) {
   // consent checkboxes: coerce to true/false
   const asBool = (v) => {
@@ -2860,18 +2874,27 @@ function mapToCreatorRecord(
 
     Date_Time: nowForCreator,
     Status: (() => {
+      const email = input.Email || input.email;
+
+      // Contact already in CRM: no Lead is created, we only update the
+      // Contact and link the meeting to it.
+      const contactInfo = existingContactInfo.find(
+        (info) => info.email === email
+      );
+      if (contactInfo) {
+        return `Contact already exists in CRM (${contactInfo.existingContactId})`;
+      }
+
       // Check if this email has duplicate lead info
       const duplicateInfo = duplicateLeadInfo.find(
-        (info) => info.email === (input.Email || input.email)
+        (info) => info.email === email
       );
       if (duplicateInfo) {
         return `Lead already created in CRM (${duplicateInfo.existingLeadId})`;
       }
 
       // Check if this email has new lead info
-      const newInfo = newLeadInfo.find(
-        (info) => info.email === (input.Email || input.email)
-      );
+      const newInfo = newLeadInfo.find((info) => info.email === email);
       if (newInfo) {
         return `new (${newInfo.newLeadId})`;
       }
@@ -3004,11 +3027,53 @@ app.post("/api/creator/leads", async (req, res) => {
     // Extract duplicate lead info if provided
     const duplicateLeadInfo = raw.duplicateLeadInfo || [];
     const newLeadInfo = raw.newLeadInfo || [];
+    const existingContactInfo = raw.existingContactInfo || [];
+
+    // 🛟 Safety net: the three arrays above are relayed by the frontend from the
+    // /api/leads response. If an email arrives with no info at all (e.g. an older
+    // frontend build that doesn't send existingContactInfo yet), look the Contact
+    // up directly so Status is still accurate instead of a bare "new".
+    for (const item of items) {
+      const email = item.Email || item.email;
+      if (!email) continue;
+      const alreadyKnown =
+        duplicateLeadInfo.some((i) => i.email === email) ||
+        newLeadInfo.some((i) => i.email === email) ||
+        existingContactInfo.some((i) => i.email === email);
+      if (alreadyKnown) continue;
+      try {
+        const contactResult = await crmSearchByEmail({
+          org: "main",
+          module: "Contacts",
+          email,
+        });
+        if (contactResult.found && contactResult.rows.length > 0) {
+          const foundContact = contactResult.rows[0];
+          existingContactInfo.push({
+            email,
+            existingContactId: foundContact.id,
+            firstName: foundContact.First_Name || foundContact.first_name,
+            lastName: foundContact.Last_Name || foundContact.last_name,
+            foundInOrg: "main",
+          });
+        }
+      } catch (e) {
+        console.error(
+          `❌ Creator Status contact lookup for ${email}:`,
+          e.message
+        );
+      }
+    }
 
     // Map + validate
 
     const mapped = items.map((item) =>
-      mapToCreatorRecord(item, duplicateLeadInfo, newLeadInfo)
+      mapToCreatorRecord(
+        item,
+        duplicateLeadInfo,
+        newLeadInfo,
+        existingContactInfo
+      )
     );
 
     const badIdx = mapped.findIndex((r) => !validateCreatorRecord(r).ok);
