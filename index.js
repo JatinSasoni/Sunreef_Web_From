@@ -2976,6 +2976,13 @@ function mapToCreatorRecord(
         : undefined,
 
     Tour_Given_By: input.Tour_Given_By ?? input.tourGivenBy,
+    // Stand Location — the form sends it as boatShowPort (CRM calls it
+    // Boat_Show_Port); Creator stores it as Stand_Location.
+    Stand_Location:
+      input.Stand_Location ??
+      input.boatShowPort ??
+      input.Boat_Show_Port ??
+      undefined,
     // Per requirement: store the composed description in Creator Notes field
     Notes: description,
 
